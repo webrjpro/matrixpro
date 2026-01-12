@@ -55,7 +55,7 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
 
-        /* --- CSS DE IMPRESSÃO --- */
+        /* --- CSS DE IMPRESSÃO (RESTAURADO AO ORIGINAL) --- */
         @media print {
             @page { size: landscape; margin: 4mm; }
             
@@ -146,6 +146,38 @@
             #print-justifications th, #print-day-details th, #print-absences th {
                 background-color: #e2e8f0 !important;
                 font-weight: bold;
+            }
+
+            /* === NOVA FUNCIONALIDADE: IMPRESSÃO ISOLADA DE RELATÓRIO === */
+            /* Isso só ativa quando clicamos no botão de imprimir relatório */
+            body.printing-report #reports-modal {
+                display: block !important;
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                background: white !important;
+                z-index: 99999 !important;
+                overflow: visible !important;
+            }
+            body.printing-report #reports-modal .overflow-y-auto {
+                overflow: visible !important;
+                height: auto !important;
+            }
+            body.printing-report #reports-modal .no-print-in-modal {
+                display: none !important;
+            }
+            
+            /* Quando imprimindo APENAS o relatório, esconde a matriz */
+            body.printing-report #matrix-wrapper, 
+            body.printing-report #matrix-container,
+            body.printing-report #quick-stats,
+            body.printing-report nav,
+            body.printing-report aside,
+            body.printing-report #print-header-title,
+            body.printing-report #print-footer {
+                display: none !important;
             }
         }
         
@@ -510,14 +542,24 @@
     </div>
 
     <!-- Modal Relatórios -->
-    <div id="reports-modal" class="fixed inset-0 bg-slate-900/60 z-[120] hidden flex items-center justify-center backdrop-blur-sm no-print">
+    <div id="reports-modal" class="fixed inset-0 bg-slate-900/60 z-[120] hidden flex items-center justify-center backdrop-blur-sm no-print-in-modal">
         <div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl mx-4 flex flex-col max-h-[90vh] overflow-hidden animate-fade-in">
-            <div class="p-6 border-b flex justify-between items-center bg-teal-50/50">
+            <div class="p-6 border-b flex justify-between items-center bg-teal-50/50 no-print-in-modal">
                 <div>
                     <h3 class="font-bold text-teal-900 flex items-center gap-2 text-lg"><i data-lucide="pie-chart" class="w-5 h-5 text-teal-600"></i> Relatório de Performance</h3>
                     <p class="text-xs text-teal-600 uppercase font-bold tracking-widest mt-1" id="rep-month-label"></p>
                 </div>
-                <button onclick="closeModal('reports-modal')" class="text-teal-400 hover:text-teal-600 bg-white p-1 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+                <!-- NOVO: Controles do Header (Busca e Print) -->
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-teal-500"></i>
+                        <input type="text" id="rep-search" oninput="filterReports()" placeholder="Buscar nome..." class="pl-9 pr-4 py-2 text-sm border border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none bg-white/50">
+                    </div>
+                    <button onclick="printReport()" class="p-2 text-teal-700 bg-teal-100 hover:bg-teal-200 rounded-lg transition-colors" data-tooltip="Imprimir Relatório">
+                        <i data-lucide="printer" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="closeModal('reports-modal')" class="text-teal-400 hover:text-teal-600 bg-white p-1 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
             </div>
             
             <div class="p-4 bg-slate-50/50 border-b space-y-4">
@@ -527,7 +569,7 @@
                     <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><p class="text-[10px] text-slate-400 font-bold uppercase mb-2">Justificadas</p><p class="text-3xl font-black text-blue-600" id="rep-total-just">0</p></div>
                     <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><p class="text-[10px] text-slate-400 font-bold uppercase mb-2">Frequência</p><p class="text-3xl font-black text-indigo-600" id="rep-freq-geral">0%</p></div>
                 </div>
-                <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full h-32">
+                <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-100 w-full h-32 no-print-in-modal">
                     <canvas id="attendance-chart"></canvas>
                 </div>
             </div>
@@ -1070,8 +1112,20 @@
         }
 
         function openReportsModal() {
+            // Limpa o campo de busca ao abrir
+            document.getElementById('rep-search').value = '';
+            
+            renderReportsTable();
+            openModal('reports-modal');
+        }
+
+        // Função separada para renderizar a tabela de relatórios, permitindo filtragem
+        function renderReportsTable() {
             const tbody = document.getElementById('reports-body');
             tbody.innerHTML = '';
+            
+            const searchTerm = document.getElementById('rep-search').value.toLowerCase();
+            
             let grandP = 0, grandF = 0, grandJ = 0, grandPossible = 0;
             
             const chartLabels = [];
@@ -1080,6 +1134,9 @@
             const chartDataJ = [];
 
             employees.forEach(emp => {
+                // Filtro de Busca
+                if (searchTerm && !emp.name.toLowerCase().includes(searchTerm)) return;
+
                 let p = 0, f = 0, j = 0, count = 0;
                 selectedDays.forEach(d => {
                     const key = `${currentDate.getFullYear()}-${currentDate.getMonth()}-${d}`;
@@ -1105,7 +1162,22 @@
             document.getElementById('rep-freq-geral').innerText = grandPossible > 0 ? Math.round((grandP/grandPossible)*100) + '%' : '0%';
             
             renderChart(chartLabels, chartDataP, chartDataF, chartDataJ);
-            openModal('reports-modal');
+        }
+        
+        // Função de filtro acionada pelo input
+        function filterReports() {
+            renderReportsTable();
+        }
+
+        // Função para imprimir APENAS o relatório
+        function printReport() {
+            document.body.classList.add('printing-report');
+            window.print();
+            // Remove a classe após a impressão (ou cancelamento) para voltar ao normal
+            // setTimeout é usado para garantir que o navegador detecte o estado de impressão antes de remover
+            setTimeout(() => {
+                document.body.classList.remove('printing-report');
+            }, 500);
         }
 
         function renderChart(labels, dataP, dataF, dataJ) {
@@ -1163,6 +1235,40 @@
         /* Hide scrollbar */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* CSS ESPECÍFICO PARA IMPRESSÃO EM UMA ÚNICA FOLHA */
+        @media print {
+            @page { margin: 1cm; size: portrait; }
+            body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; zoom: 70%; }
+            
+            #login-screen, .no-print { display: none !important; }
+            
+            #app-dashboard { 
+                display: block !important; 
+                box-shadow: none; 
+                border: none; 
+                width: 100% !important; 
+                max-width: none !important; 
+                height: auto !important; 
+                position: static !important; 
+                overflow: visible !important;
+            }
+            
+            .overflow-y-auto { overflow: visible !important; height: auto !important; }
+            .sticky { position: static !important; }
+            
+            /* Ajuste para caber em uma página */
+            .item-container { 
+                page-break-inside: avoid; 
+                border: 1px solid #eee; 
+                margin-bottom: 8px;
+                padding: 8px !important;
+            }
+            .timeline-line { display: block; height: 100%; border-left: 1px dashed #ccc; background: none; left: 23px; }
+            
+            /* Esconder botões de ação na impressão */
+            button { display: none !important; }
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center justify-center p-4">
@@ -1194,7 +1300,10 @@
                     <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Bem-vindo(a),</p>
                     <h2 class="text-2xl font-black text-slate-900 leading-tight" id="user-name">Colaborador</h2>
                 </div>
-                <button onclick="logout()" class="p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-rose-50 hover:text-rose-500 transition-colors"><i data-lucide="log-out" class="w-5 h-5"></i></button>
+                <div class="flex gap-2">
+                    <button onclick="window.print()" class="p-2 bg-slate-50 text-indigo-500 rounded-full hover:bg-indigo-50 transition-colors no-print" title="Imprimir Escala"><i data-lucide="printer" class="w-5 h-5"></i></button>
+                    <button onclick="logout()" class="p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-rose-50 hover:text-rose-500 transition-colors no-print" title="Sair"><i data-lucide="log-out" class="w-5 h-5"></i></button>
+                </div>
             </div>
             
             <!-- Cards de Resumo -->
@@ -1220,7 +1329,7 @@
         </div>
 
         <!-- Barra Inferior -->
-        <div class="p-4 border-t border-slate-100 bg-white/80 backdrop-blur-sm absolute bottom-0 w-full flex justify-center">
+        <div class="p-4 border-t border-slate-100 bg-white/80 backdrop-blur-sm absolute bottom-0 w-full flex justify-center no-print">
             <div class="text-[10px] font-bold text-slate-300 uppercase">Matrix Pro Portal</div>
         </div>
     </div>
@@ -1269,7 +1378,7 @@
                 const delay = index * 0.05;
 
                 const itemHTML = \`
-                    <div class="relative z-10 flex gap-4 animate-slide-up" style="animation-delay: \${delay}s">
+                    <div class="relative z-10 flex gap-4 animate-slide-up item-container" style="animation-delay: \${delay}s">
                         <div class="flex flex-col items-center">
                             <div class="w-12 h-12 rounded-2xl \${isHO ? 'bg-slate-50 text-slate-600' : 'bg-emerald-600 text-white shadow-lg shadow-emerald-200'} flex flex-col items-center justify-center border border-slate-100 z-10 font-bold shrink-0">
                                 <span class="text-[8px] uppercase opacity-70 leading-none mb-0.5">\${weekDayShort}</span>
